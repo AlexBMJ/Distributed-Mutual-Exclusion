@@ -1,0 +1,12 @@
+syntax = 'proto3';
+
+service mutualEX {
+  rpc WriteToLog(Message) returns (Empty);
+}
+
+message Message {
+  int64 timestamp = 1;
+  string text = 2;
+}
+
+message Empty {}
