@@ -1,4 +1,4 @@
-module MutualExclusion
+module example.com/MutualExclusion
 
 go 1.17
 

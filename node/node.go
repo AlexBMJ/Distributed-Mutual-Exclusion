@@ -1,8 +1,8 @@
 package main
 
 import (
-	pb "MutualExclusion/mxservice"
 	"context"
+	pb "example.com/MutualExclusion/mxservice"
 	"flag"
 	"github.com/hashicorp/serf/serf"
 	"github.com/pkg/errors"
