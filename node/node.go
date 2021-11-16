@@ -1,28 +1,81 @@
 package main
 
 import (
+	pb "MutualExclusion/mxservice"
+	"context"
 	"flag"
 	"github.com/hashicorp/serf/serf"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc"
 	"log"
+	"net"
+	"os"
+	"strconv"
+	"time"
+)
+
+type MutualEXServer struct {
+	pb.UnimplementedMutualEXServer
+}
+
+var (
+	lamportClock int64 = 0
 )
 
 func main() {
-	aaddr := flag.String("aaddr","","")
-	caddr := flag.String("caddr","","")
+	nodeName := os.Getenv("NODE_NAME")
+	aaddr := os.Getenv("ADVERTISE_ADDRESS")
+	caddr := os.Getenv("CLUSTER_ADDRESS")
 	flag.Parse()
-	cluster, err := setupCluster(*aaddr, *caddr)
+	cluster, err := setupCluster(nodeName, aaddr, caddr)
 	defer cluster.Leave()
 	if err != nil {
 		log.Fatal(err)
 	}
-	for{}
 
+	server := grpc.NewServer()
+	pb.RegisterMutualEXServer(server, &MutualEXServer{})
+
+	lis, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	log.Printf("server listening at %v", lis.Addr())
+	go func() {
+		if err := server.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
+	for {
+		for i := 0; i < len(cluster.Members()); i++ {
+			if cluster.Members()[i].Name == nodeName {
+				continue
+			}
+			var ctx = context.Background()
+			maddr := cluster.Members()[i].Addr.String()
+			var conn, err = grpc.Dial(maddr+":8080", grpc.WithInsecure(), grpc.WithBlock())
+			if err != nil {
+				log.Fatalf("did not connect: %v", err)
+			}
+
+			var client = pb.NewMutualEXClient(conn)
+			var _, joinErr = client.WriteToLog(ctx, &pb.Message{Timestamp: lamportClock})
+			if joinErr != nil {
+				log.Fatalf("could not join chittychat: %v", joinErr)
+			}
+
+			conn.Close()
+			time.Sleep(2000)
+		}
+	}
 }
 
-func setupCluster(advertiseAddr string, clusterAddr string) (*serf.Serf, error) {
+func setupCluster(nodeName string, advertiseAddr string, clusterAddr string) (*serf.Serf, error) {
 	conf := serf.DefaultConfig()
 	conf.Init()
+	conf.NodeName = nodeName
 	conf.MemberlistConfig.AdvertiseAddr = advertiseAddr
 
 	cluster, err := serf.Create(conf)
@@ -38,18 +91,7 @@ func setupCluster(advertiseAddr string, clusterAddr string) (*serf.Serf, error) 
 	return cluster, nil
 }
 
-func getOtherMembers(cluster *serf.Serf) []serf.Member {
-	members := cluster.Members()
-	for i := 0; i < len(members); {
-		if members[i].Name == cluster.LocalMember().Name || members[i].Status != serf.StatusAlive {
-			if i < len(members)-1 {
-				members = append(members[:i], members[i + 1:]...)
-			} else {
-				members = members[:i]
-			}
-		} else {
-			i++
-		}
-	}
-	return members
+func (s *MutualEXServer) WriteToLog(ctx context.Context, message *pb.Message) (*pb.Empty, error) {
+	log.Println(strconv.Itoa(int(message.Timestamp)))
+	return &pb.Empty{}, nil
 }
