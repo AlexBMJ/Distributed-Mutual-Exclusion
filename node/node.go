@@ -10,7 +10,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -20,7 +19,6 @@ type MutualEXServer struct {
 
 var (
 	next         string
-	prev         string
 	token        = make(chan int, 1)
 	currentToken int
 )
@@ -53,7 +51,7 @@ func main() {
 
 	for {
 		var ctx = context.Background()
-		WriteToLog(ctx, &pb.Message{Text: strconv.Itoa(os.Getpid())})
+		WriteToLog(ctx, &pb.Message{Text: nodeName})
 		time.Sleep(2000 * time.Millisecond)
 	}
 }
@@ -90,8 +88,6 @@ func SetupCluster(nodeName string, advertiseAddr string, clusterAddr string) (*s
 	} else {
 		next = advertiseAddr
 	}
-
-	prev = clusterAddr
 
 	if len(cluster.Members()) == 1 {
 		token <- 1
