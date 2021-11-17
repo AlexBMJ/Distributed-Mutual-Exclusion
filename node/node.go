@@ -113,7 +113,7 @@ func WriteToLog(ctx context.Context, message *pb.Message) {
 	currentToken = <-token
 	log.Printf("[%s]: %s\n", now.Format("2006-01-02 15:04:05.000000"), message.Text)
 
-	file, ferr := os.OpenFile("/go/src/app/log.txt", os.O_APPEND|os.O_WRONLY, 0644)
+	file, ferr := os.OpenFile("/go/src/app/log/log.txt", os.O_APPEND|os.O_WRONLY, 0666)
 	if ferr != nil {
 		fmt.Println(ferr)
 		return
