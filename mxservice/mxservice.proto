@@ -6,11 +6,20 @@ package mxservice;
 
 service mutualEX {
   rpc WriteToLog(Message) returns (Empty);
+  rpc RequestJoin(JoinRequest) returns (JoinRequest);
+  rpc PassToken(Token) returns (Empty);
 }
 
 message Message {
-  int64 timestamp = 1;
-  string text = 2;
+  string text = 1;
+}
+
+message JoinRequest {
+  string senderAddr = 1;
+}
+
+message Token {
+  int32 token = 1;
 }
 
 message Empty {}

@@ -19,7 +19,10 @@ type MutualEXServer struct {
 }
 
 var (
-	lamportClock int64 = 0
+	next         string
+	prev         string
+	token        = make(chan int, 1)
+	currentToken int
 )
 
 func main() {
@@ -27,7 +30,7 @@ func main() {
 	aaddr := os.Getenv("ADVERTISE_ADDRESS")
 	caddr := os.Getenv("CLUSTER_ADDRESS")
 	flag.Parse()
-	cluster, err := setupCluster(nodeName, aaddr, caddr)
+	cluster, err := SetupCluster(nodeName, aaddr, caddr)
 	defer cluster.Leave()
 	if err != nil {
 		log.Fatal(err)
@@ -49,30 +52,13 @@ func main() {
 	}()
 
 	for {
-		for i := 0; i < len(cluster.Members()); i++ {
-			if cluster.Members()[i].Name == nodeName {
-				continue
-			}
-			var ctx = context.Background()
-			maddr := cluster.Members()[i].Addr.String()
-			var conn, err = grpc.Dial(maddr+":8080", grpc.WithInsecure(), grpc.WithBlock())
-			if err != nil {
-				log.Fatalf("did not connect: %v", err)
-			}
-
-			var client = pb.NewMutualEXClient(conn)
-			var _, joinErr = client.WriteToLog(ctx, &pb.Message{Timestamp: lamportClock})
-			if joinErr != nil {
-				log.Fatalf("could not join chittychat: %v", joinErr)
-			}
-
-			conn.Close()
-			time.Sleep(2000)
-		}
+		var ctx = context.Background()
+		WriteToLog(ctx, &pb.Message{Text: strconv.Itoa(os.Getpid())})
+		time.Sleep(2000 * time.Millisecond)
 	}
 }
 
-func setupCluster(nodeName string, advertiseAddr string, clusterAddr string) (*serf.Serf, error) {
+func SetupCluster(nodeName string, advertiseAddr string, clusterAddr string) (*serf.Serf, error) {
 	conf := serf.DefaultConfig()
 	conf.Init()
 	conf.NodeName = nodeName
@@ -88,10 +74,62 @@ func setupCluster(nodeName string, advertiseAddr string, clusterAddr string) (*s
 		log.Printf("Couldn't join cluster, starting own: %v\n", err)
 	}
 
+	if len(cluster.Members()) != 1 {
+		var ctx = context.Background()
+		var conn, err2 = grpc.Dial(clusterAddr+":8080", grpc.WithInsecure(), grpc.WithBlock())
+		if err2 != nil {
+			log.Fatalf("did not connect: %v", err)
+		}
+
+		var client = pb.NewMutualEXClient(conn)
+		first, err3 := client.RequestJoin(ctx, &pb.JoinRequest{SenderAddr: advertiseAddr})
+		if err3 != nil {
+			log.Fatalf("could not request to join: %v", err)
+		}
+		next = first.SenderAddr
+	} else {
+		next = advertiseAddr
+	}
+
+	prev = clusterAddr
+
+	if len(cluster.Members()) == 1 {
+		token <- 1
+	}
+
 	return cluster, nil
 }
 
+func (s *MutualEXServer) RequestJoin(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRequest, error) {
+	joinRequest := &pb.JoinRequest{SenderAddr: next}
+	next = req.SenderAddr
+	return joinRequest, nil
+}
+
 func (s *MutualEXServer) WriteToLog(ctx context.Context, message *pb.Message) (*pb.Empty, error) {
-	log.Println(strconv.Itoa(int(message.Timestamp)))
+	WriteToLog(ctx, message)
+	return &pb.Empty{}, nil
+}
+
+func WriteToLog(ctx context.Context, message *pb.Message) {
+	currentToken = <-token
+	log.Println(message.Text)
+
+	var conn, err = grpc.Dial(next+":8080", grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+
+	var client = pb.NewMutualEXClient(conn)
+	_, err2 := client.PassToken(ctx, &pb.Token{Token: int32(currentToken)})
+	if err2 != nil {
+		return
+	}
+}
+
+func (s *MutualEXServer) PassToken(ctx context.Context, t *pb.Token) (*pb.Empty, error) {
+	log.Println(t)
+	currentToken = int(t.Token)
+	token <- currentToken + 1
 	return &pb.Empty{}, nil
 }
