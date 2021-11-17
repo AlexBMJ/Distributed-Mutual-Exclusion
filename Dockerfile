@@ -17,4 +17,7 @@ RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
 
 RUN /usr/bin/protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative mxservice/mxservice.proto
 
+RUN mkdir -p log
+RUN touch log/log.txt
+
 ENTRYPOINT ["go", "run", "./node"]
