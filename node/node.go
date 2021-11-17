@@ -4,6 +4,7 @@ import (
 	"context"
 	pb "example.com/MutualExclusion/mxservice"
 	"flag"
+	"fmt"
 	"github.com/hashicorp/serf/serf"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -108,8 +109,16 @@ func (s *MutualEXServer) WriteToLog(ctx context.Context, message *pb.Message) (*
 }
 
 func WriteToLog(ctx context.Context, message *pb.Message) {
+	now := time.Now()
 	currentToken = <-token
-	log.Println(message.Text)
+	log.Printf("[%s]: %s\n", now.Format("2006-01-02 15:04:05.000000"), message.Text)
+
+	file, ferr := os.OpenFile("/go/src/app/log.txt", os.O_APPEND|os.O_WRONLY, 0644)
+	if ferr != nil {
+		fmt.Println(ferr)
+		return
+	}
+	fmt.Fprintf(file, "[%s]: %s\n", now.Format("2006-01-02 15:04:05.000000"), message.Text)
 
 	var conn, err = grpc.Dial(next+":8080", grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
