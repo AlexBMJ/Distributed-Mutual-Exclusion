@@ -5,13 +5,8 @@ option go_package = "example.com/MutualExclusion;mxservice";
 package mxservice;
 
 service mutualEX {
-  rpc WriteToLog(Message) returns (Empty);
   rpc RequestJoin(JoinRequest) returns (JoinRequest);
   rpc PassToken(Token) returns (Empty);
-}
-
-message Message {
-  string text = 1;
 }
 
 message JoinRequest {

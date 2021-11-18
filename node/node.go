@@ -28,18 +28,19 @@ func main() {
 	nodeName := os.Getenv("NODE_NAME")
 	caddr := os.Getenv("CLUSTER_ADDRESS")
 	flag.Parse()
-	cluster, err := SetupCluster(nodeName, caddr)
+	cluster, clustErr := SetupCluster(nodeName, caddr)
+	SetupGrpc(cluster, caddr)
 	defer cluster.Leave()
-	if err != nil {
-		log.Fatal(err)
+	if clustErr != nil {
+		log.Fatal(clustErr)
 	}
 
 	server := grpc.NewServer()
 	pb.RegisterMutualEXServer(server, &MutualEXServer{})
 
-	lis, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+	lis, servErr := net.Listen("tcp", ":8080")
+	if servErr != nil {
+		log.Fatalf("failed to listen: %v", servErr)
 	}
 
 	log.Printf("server listening at %v", lis.Addr())
@@ -49,9 +50,18 @@ func main() {
 		}
 	}()
 
+	var ctx = context.Background()
 	for {
-		var ctx = context.Background()
-		WriteToLog(ctx, &pb.Message{Text: nodeName})
+		WriteToLog(nodeName)
+		var conn, grpcErr = grpc.Dial(next+":8080", grpc.WithInsecure(), grpc.WithBlock())
+		if grpcErr != nil {
+			log.Fatalf("did not connect: %v", grpcErr)
+		}
+		var client = pb.NewMutualEXClient(conn)
+		_, tokErr := client.PassToken(ctx, &pb.Token{Token: int32(currentToken)})
+		if tokErr != nil {
+			log.Fatalf("failed to pass token: %v", tokErr)
+		}
 		time.Sleep(2000 * time.Millisecond)
 	}
 }
@@ -61,21 +71,25 @@ func SetupCluster(nodeName string, clusterAddr string) (*serf.Serf, error) {
 	conf.Init()
 	conf.NodeName = nodeName
 
-	cluster, err := serf.Create(conf)
-	if err != nil {
-		return nil, errors.Wrap(err, "Couldn't create cluster")
+	cluster, serfErr := serf.Create(conf)
+	if serfErr != nil {
+		return nil, errors.Wrap(serfErr, "Couldn't create cluster")
 	}
 
-	_, err = cluster.Join([]string{clusterAddr}, true)
-	if err != nil {
-		log.Printf("Couldn't join cluster, starting own: %v\n", err)
+	_, joinErr := cluster.Join([]string{clusterAddr}, true)
+	if joinErr != nil {
+		log.Printf("Couldn't join cluster, starting own: %v\n", joinErr)
 	}
 
+	return cluster, nil
+}
+
+func SetupGrpc(cluster *serf.Serf, addr string) {
 	if len(cluster.Members()) != 1 {
 		var ctx = context.Background()
-		var conn, err2 = grpc.Dial(clusterAddr+":8080", grpc.WithInsecure(), grpc.WithBlock())
+		var conn, err2 = grpc.Dial(addr+":8080", grpc.WithInsecure(), grpc.WithBlock())
 		if err2 != nil {
-			log.Fatalf("did not connect: %v", err)
+			log.Fatalf("did not connect: %v", err2)
 		}
 
 		var client = pb.NewMutualEXClient(conn)
@@ -91,46 +105,32 @@ func SetupCluster(nodeName string, clusterAddr string) (*serf.Serf, error) {
 	if len(cluster.Members()) == 1 {
 		token <- 1
 	}
-
-	return cluster, nil
 }
 
-func (s *MutualEXServer) RequestJoin(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRequest, error) {
+func (s *MutualEXServer) RequestJoin(_ context.Context, req *pb.JoinRequest) (*pb.JoinRequest, error) {
 	joinRequest := &pb.JoinRequest{SenderAddr: next}
 	next = req.SenderAddr
 	return joinRequest, nil
 }
 
-func (s *MutualEXServer) WriteToLog(ctx context.Context, message *pb.Message) (*pb.Empty, error) {
-	WriteToLog(ctx, message)
-	return &pb.Empty{}, nil
-}
-
-func WriteToLog(ctx context.Context, message *pb.Message) {
+func WriteToLog(text string) {
 	now := time.Now()
 	currentToken = <-token
-	log.Printf("[%s]: %s Token: %d\n", now.Format("2006-01-02 15:04:05.000000"), message.Text, currentToken)
+	log.Printf("[%s]: %s token: %d\n", now.Format("2006-01-02 15:04:05.000000"), text, currentToken)
 
 	file, ferr := os.OpenFile("/go/src/app/log/log.txt", os.O_APPEND|os.O_WRONLY, 0666)
 	if ferr != nil {
 		fmt.Println(ferr)
 		return
 	}
-	fmt.Fprintf(file, "[%s]: Token: %s %d\n", now.Format("2006-01-02 15:04:05.000000"), message.Text, currentToken)
-
-	var conn, err = grpc.Dial(next+":8080", grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-
-	var client = pb.NewMutualEXClient(conn)
-	_, err2 := client.PassToken(ctx, &pb.Token{Token: int32(currentToken)})
-	if err2 != nil {
+	_, logErr := fmt.Fprintf(file, "[%s]: %s token: %d\n", now.Format("2006-01-02 15:04:05.000000"), text, currentToken)
+	if logErr != nil {
+		fmt.Println(logErr)
 		return
 	}
 }
 
-func (s *MutualEXServer) PassToken(ctx context.Context, t *pb.Token) (*pb.Empty, error) {
+func (s *MutualEXServer) PassToken(_ context.Context, t *pb.Token) (*pb.Empty, error) {
 	currentToken = int(t.Token)
 	token <- currentToken + 1
 	return &pb.Empty{}, nil
