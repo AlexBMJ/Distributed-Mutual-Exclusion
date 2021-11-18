@@ -109,14 +109,14 @@ func (s *MutualEXServer) WriteToLog(ctx context.Context, message *pb.Message) (*
 func WriteToLog(ctx context.Context, message *pb.Message) {
 	now := time.Now()
 	currentToken = <-token
-	log.Printf("[%s]: %s\n", now.Format("2006-01-02 15:04:05.000000"), message.Text)
+	log.Printf("[%s]: %s Token: %d\n", now.Format("2006-01-02 15:04:05.000000"), message.Text, currentToken)
 
 	file, ferr := os.OpenFile("/go/src/app/log/log.txt", os.O_APPEND|os.O_WRONLY, 0666)
 	if ferr != nil {
 		fmt.Println(ferr)
 		return
 	}
-	fmt.Fprintf(file, "[%s]: %s\n", now.Format("2006-01-02 15:04:05.000000"), message.Text)
+	fmt.Fprintf(file, "[%s]: Token: %s %d\n", now.Format("2006-01-02 15:04:05.000000"), message.Text, currentToken)
 
 	var conn, err = grpc.Dial(next+":8080", grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -131,7 +131,6 @@ func WriteToLog(ctx context.Context, message *pb.Message) {
 }
 
 func (s *MutualEXServer) PassToken(ctx context.Context, t *pb.Token) (*pb.Empty, error) {
-	log.Println(t)
 	currentToken = int(t.Token)
 	token <- currentToken + 1
 	return &pb.Empty{}, nil
