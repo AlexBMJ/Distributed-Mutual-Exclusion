@@ -1,0 +1,20 @@
+syntax = 'proto3';
+
+option go_package = "example.com/MutualExclusion;mxservice";
+
+package mxservice;
+
+service mutualEX {
+  rpc RequestJoin(JoinRequest) returns (JoinRequest);
+  rpc PassToken(Token) returns (Empty);
+}
+
+message JoinRequest {
+  string senderAddr = 1;
+}
+
+message Token {
+  int32 token = 1;
+}
+
+message Empty {}
