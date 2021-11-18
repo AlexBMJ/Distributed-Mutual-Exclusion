@@ -7,7 +7,7 @@ Mandatory Exercise 2 - Distributed Systems
 docker build -t mxnode .
 
 # Run multiple nodes
-docker run -e NODE_NAME=node1 -e ADVERTISE_ADDRESS=172.17.0.3 -p 8080:8080 mxnode
+docker run -e NODE_NAME=node1 -e ADVERTISE_ADDRESS=<DockerIP> -p 8080:8080 mxnode
 docker run -e NODE_NAME=node2 -e ADVERTISE_ADDRESS=172.17.0.4 -e CLUSTER_ADDRESS=172.17.0.3 -p 8081:8080 mxnode
 docker run -e NODE_NAME=node3 -e ADVERTISE_ADDRESS=172.17.0.5 -e CLUSTER_ADDRESS=172.17.0.4 -p 8082:8080 mxnode
 ```

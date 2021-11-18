@@ -5,17 +5,15 @@ read x
 
 sudo docker build -t mxnode .
 
-gateway=$(sudo docker network inspect bridge | grep Gateway | awk '{print substr($2,2,length($2)-3)}')
-ip=$(sudo docker network inspect bridge | grep Gateway | awk '{print substr($2,length($2)-1,1)}')
-((ip+=3))
+sudo docker network create --subnet=172.20.0.0/16 mxnetwork
 
 mkdir -p log
 rm ${PWD}/log/*.txt
 
 touch ${PWD}/log/node1.txt
-sudo docker run --rm -v ${PWD}/log/node1.txt:/go/src/app/log/log.txt -e NODE_NAME=node1 -e ADVERTISE_ADDRESS=${gateway}$((ip+1)) -p 8080:8080 mxnode & > /dev/null
-for i in $(eval echo {0..$((x-2))})
+sudo docker run --rm --net mxnetwork --ip 172.20.0.10 -v ${PWD}/log/node1.txt:/go/src/app/log/log.txt -e NODE_NAME=node1 -e ADVERTISE_ADDRESS=172.20.0.10 -p 8080:8080 mxnode &
+for (( i = 0; i < $((x-1)); i++))
 do
-  touch ${PWD}/log/node${i+2}.txt
-  sudo docker run --rm -v ${PWD}/log/node${i+2}.txt:/go/src/app/log/log.txt -e NODE_NAME=node${i+2} -e ADVERTISE_ADDRESS=${gateway}$((ip+i+2)) -e CLUSTER_ADDRESS=${gateway}$((ip+i+1)) -p $((8080+i+1)):8080 mxnode & > /dev/null
+  touch ${PWD}/log/node$((i+2)).txt
+  sudo docker run --rm --net mxnetwork --ip 172.20.0.1$((i+1)) -v ${PWD}/log/node$((i+2)).txt:/go/src/app/log/log.txt -e NODE_NAME=node$((i+2)) -e ADVERTISE_ADDRESS=172.20.0.1$((i+1)) -e CLUSTER_ADDRESS=172.20.0.1$((i)) -p $((8081+i)):8080 mxnode &
 done
