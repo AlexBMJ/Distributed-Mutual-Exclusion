@@ -26,10 +26,9 @@ var (
 
 func main() {
 	nodeName := os.Getenv("NODE_NAME")
-	aaddr := os.Getenv("ADVERTISE_ADDRESS")
 	caddr := os.Getenv("CLUSTER_ADDRESS")
 	flag.Parse()
-	cluster, err := SetupCluster(nodeName, aaddr, caddr)
+	cluster, err := SetupCluster(nodeName, caddr)
 	defer cluster.Leave()
 	if err != nil {
 		log.Fatal(err)
@@ -57,11 +56,10 @@ func main() {
 	}
 }
 
-func SetupCluster(nodeName string, advertiseAddr string, clusterAddr string) (*serf.Serf, error) {
+func SetupCluster(nodeName string, clusterAddr string) (*serf.Serf, error) {
 	conf := serf.DefaultConfig()
 	conf.Init()
 	conf.NodeName = nodeName
-	conf.MemberlistConfig.AdvertiseAddr = advertiseAddr
 
 	cluster, err := serf.Create(conf)
 	if err != nil {
@@ -81,13 +79,13 @@ func SetupCluster(nodeName string, advertiseAddr string, clusterAddr string) (*s
 		}
 
 		var client = pb.NewMutualEXClient(conn)
-		first, err3 := client.RequestJoin(ctx, &pb.JoinRequest{SenderAddr: advertiseAddr})
+		first, err3 := client.RequestJoin(ctx, &pb.JoinRequest{SenderAddr: cluster.LocalMember().Addr.String()})
 		if err3 != nil {
-			log.Fatalf("could not request to join: %v", err)
+			log.Fatalf("could not request to join: %v", err3)
 		}
 		next = first.SenderAddr
 	} else {
-		next = advertiseAddr
+		next = cluster.LocalMember().Addr.String()
 	}
 
 	if len(cluster.Members()) == 1 {
